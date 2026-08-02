@@ -19,11 +19,13 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  // Unknown / unexpected errors
+// Unknown / unexpected errors
+  // Log the full error for debugging (visible in Vercel Function Logs)
   console.error('Unexpected error:', err);
+  console.error('Stack:', err.stack);
   return res.status(500).json({
     success: false,
-    error: 'Internal server error.',
+    error: 'Internal server error: ' + (err.message || 'Unknown error'),
   });
 }
 

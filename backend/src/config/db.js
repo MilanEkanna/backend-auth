@@ -1,6 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { Redis } = require('@upstash/redis');
+
+// Wrap @upstash/redis in try-catch in case it's not installed or fails on Vercel
+let Redis = null;
+try {
+  Redis = require('@upstash/redis').Redis;
+} catch (err) {
+  // Redis module not available, will use in-memory or file-based storage
+  console.warn('⚠️ @upstash/redis not available, using in-memory storage.');
+}
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
@@ -23,7 +31,8 @@ const REFRESH_TOKENS_FILE = path.join(DATA_DIR, 'refreshTokens.json');
 let redis = null;
 
 function isRedisConfigured() {
-  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  // Redis must be successfully loaded AND env vars must be set
+  return !!Redis && !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
 function getRedis() {

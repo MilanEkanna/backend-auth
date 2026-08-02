@@ -6,6 +6,18 @@
  * development, and what the Vercel serverless function (api/index.js) relies on.
  */
 require('dotenv').config();
+
+// ---- Provide fallback JWT secrets for development / learning on Vercel ----
+// In production, ALWAYS set these via environment variables in your Vercel dashboard.
+if (!process.env.ACCESS_TOKEN_SECRET) {
+  process.env.ACCESS_TOKEN_SECRET = 'dev-access-secret-do-not-use-in-production';
+  console.warn('⚠️ ACCESS_TOKEN_SECRET not set — using fallback (dev only)');
+}
+if (!process.env.REFRESH_TOKEN_SECRET) {
+  process.env.REFRESH_TOKEN_SECRET = 'dev-refresh-secret-do-not-use-in-production';
+  console.warn('⚠️ REFRESH_TOKEN_SECRET not set — using fallback (dev only)');
+}
+
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const authRoutes = require('./src/routes/authRoutes');
