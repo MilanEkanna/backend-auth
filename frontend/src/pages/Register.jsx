@@ -51,12 +51,13 @@ export default function Register() {
     }
     learningLogger.info('✅ Client validation passed — all fields OK.', 'register');
 
-    try {
+try {
       await register({ name: form.name, email: form.email, password: form.password });
       learningLogger.success('🎉 Account created & logged in. Navigating to dashboard.', 'register');
       navigate('/dashboard');
     } catch (err) {
-      const msg = err.response?.data?.error || 'Registration failed. Please try again.';
+      const raw = err.response?.data?.error || err.response?.data?.message || err.message || 'Registration failed. Please try again.';
+      const msg = typeof raw === 'string' ? raw : (raw?.message || JSON.stringify(raw));
       setError(msg);
       learningLogger.error(`✗ ${msg}`, 'register');
     } finally {

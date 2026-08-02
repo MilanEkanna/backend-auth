@@ -46,16 +46,36 @@ async function redisSetArray(key, data) {
   return data;
 }
 
+// ---- In-memory engine (fallback when neither Redis nor file system works) ---
+// Used on Vercel when KV (Redis) env vars are not configured.
+// Data is ephemeral — lost on cold start. Good enough for a learning app.
+const memoryStore = {
+  users: [],
+  refreshTokens: [],
+};
+
+function isReadOnlyFS() {
+  // Detect if we're on Vercel by checking if tmp is the only writable dir
+  return process.env.VERCEL === '1';
+}
+
 // ---- File engine (local dev) ----------------------------------------------
 function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  [USERS_FILE, REFRESH_TOKENS_FILE].forEach((file) => {
-    if (!fs.existsSync(file)) {
-      fs.writeFileSync(file, JSON.stringify([]));
+  // On Vercel, filesystem is read-only — skip file creation
+  if (isReadOnlyFS()) return;
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-  });
+    [USERS_FILE, REFRESH_TOKENS_FILE].forEach((file) => {
+      if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, JSON.stringify([]));
+      }
+    });
+  } catch (err) {
+    // Silently fall back to in-memory storage if FS is read-only
+    console.warn('⚠️ File system not writable, using in-memory storage.');
+  }
 }
 
 function fileReadJSON(filePath) {
@@ -76,7 +96,7 @@ const db = {
   isRedisConfigured,
   ensureDataFiles,
 
-  /**
+/**
    * Read an array of records for a collection.
    * @param {'users' | 'refreshTokens'} collection
    * @returns {Promise<Array>}
@@ -85,8 +105,17 @@ const db = {
     if (isRedisConfigured()) {
       return redisGetArray(collection);
     }
+    // On Vercel without KV, use in-memory storage (filesystem is read-only)
+    if (isReadOnlyFS()) {
+      return memoryStore[collection] || [];
+    }
     const file = collection === 'users' ? USERS_FILE : REFRESH_TOKENS_FILE;
-    return fileReadJSON(file);
+    try {
+      return fileReadJSON(file);
+    } catch (err) {
+      // If file read fails (e.g. read-only FS), fall back to in-memory
+      return memoryStore[collection] || [];
+    }
   },
 
   /**
@@ -99,8 +128,18 @@ const db = {
     if (isRedisConfigured()) {
       return redisSetArray(collection, data);
     }
+    // On Vercel without KV, use in-memory storage (filesystem is read-only)
+    if (isReadOnlyFS()) {
+      memoryStore[collection] = data;
+      return data;
+    }
     const file = collection === 'users' ? USERS_FILE : REFRESH_TOKENS_FILE;
-    fileWriteJSON(file, data);
+    try {
+      fileWriteJSON(file, data);
+    } catch (err) {
+      // If file write fails, store in memory instead
+      memoryStore[collection] = data;
+    }
     return data;
   },
 };

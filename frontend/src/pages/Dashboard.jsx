@@ -119,8 +119,10 @@ export default function Dashboard() {
     setError('');
     try {
       await fn();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong.');
+} catch (err) {
+      const raw = err.response?.data?.error || err.response?.data?.message || err.message || 'Something went wrong.';
+      const msg = typeof raw === 'string' ? raw : (raw?.message || JSON.stringify(raw));
+      setError(msg);
     } finally {
       setBusy('');
     }

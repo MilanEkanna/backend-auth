@@ -32,12 +32,13 @@ export default function Login() {
     }
     learningLogger.info('✅ Client validation passed — fields are filled.', 'login');
 
-    try {
+try {
       await login({ email: form.email, password: form.password });
       learningLogger.success('🚀 Navigated to dashboard.', 'login');
       navigate('/dashboard');
     } catch (err) {
-      const msg = err.response?.data?.error || 'Login failed. Please try again.';
+      const raw = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please try again.';
+      const msg = typeof raw === 'string' ? raw : (raw?.message || JSON.stringify(raw));
       setError(msg);
       learningLogger.error(`✗ ${msg}`, 'login');
     } finally {
