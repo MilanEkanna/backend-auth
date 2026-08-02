@@ -5,6 +5,7 @@ const RefreshToken = require('../models/refreshTokenModel');
 
 /**
  * Token service - generates, verifies and rotates JWT tokens.
+ * Methods that touch the store are async (serverless / Redis compatible).
  */
 const tokenService = {
   /**
@@ -29,13 +30,12 @@ const tokenService = {
    * rotation and detect reuse.
    * @param {object} user - user object
    * @param {string} familyId - optional; if provided the new token joins an existing family
-   * @returns {{ token: string, tokenId: string, familyId: string, expiresAt: string }}
+   * @returns {Promise<{ token: string, tokenId: string, familyId: string, expiresAt: string }>}
    */
-  generateRefreshToken(user, familyId = null) {
+  async generateRefreshToken(user, familyId = null) {
     const tokenId = uuidv4();
     const newFamilyId = familyId || uuidv4();
-    const expiresInMs =
-      msFromString(process.env.REFRESH_TOKEN_EXPIRY || '7d');
+    const expiresInMs = msFromString(process.env.REFRESH_TOKEN_EXPIRY || '7d');
     const expiresAt = new Date(Date.now() + expiresInMs).toISOString();
 
     const payload = {
@@ -51,7 +51,7 @@ const tokenService = {
     });
 
     // Persist the token record so we can track rotation
-    RefreshToken.create({
+    await RefreshToken.create({
       userId: user.id,
       tokenId,
       familyId: newFamilyId,
@@ -80,9 +80,9 @@ const tokenService = {
    * Verify a refresh token's signature and check its record is still valid.
    * Does NOT mark it as rotated yet - that's done by rotateRefreshToken.
    * @param {string} token
-   * @returns {{ payload: object, record: object }|null}
+   * @returns {Promise<{ payload: object, record: object }|null>}
    */
-  verifyRefreshToken(token) {
+  async verifyRefreshToken(token) {
     let payload;
     try {
       payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
@@ -92,7 +92,7 @@ const tokenService = {
 
     if (payload.type !== 'refresh') return null;
 
-    const record = RefreshToken.findByTokenId(payload.jti);
+    const record = await RefreshToken.findByTokenId(payload.jti);
     if (!record) return null;
 
     // Check expiry
@@ -113,10 +113,10 @@ const tokenService = {
    *
    * @param {string} refreshToken - the presented refresh token
    * @param {object} user - the authenticated user
-   * @returns {{ accessToken: string, refreshToken: string, newRecord: object }|null}
+   * @returns {Promise<{ accessToken: string, refreshToken: string, newRecord: object }|null>}
    */
-  rotateRefreshToken(refreshToken, user) {
-    const verified = this.verifyRefreshToken(refreshToken);
+  async rotateRefreshToken(refreshToken, user) {
+    const verified = await this.verifyRefreshToken(refreshToken);
     if (!verified) return null;
 
     const { record } = verified;
@@ -124,15 +124,15 @@ const tokenService = {
     // REUSE DETECTION: if this token was already used (rotated), an attacker
     // may be replaying it. Revoke the whole family.
     if (record.rotated) {
-      RefreshToken.revokeFamily(record.familyId);
+      await RefreshToken.revokeFamily(record.familyId);
       return null;
     }
 
     // Valid token - mark as rotated and issue a new pair in the same family
-    RefreshToken.markRotated(record.tokenId);
+    await RefreshToken.markRotated(record.tokenId);
 
     const accessToken = this.generateAccessToken(user);
-    const newRefresh = this.generateRefreshToken(user, record.familyId);
+    const newRefresh = await this.generateRefreshToken(user, record.familyId);
 
     return {
       accessToken,
@@ -144,18 +144,18 @@ const tokenService = {
   /**
    * Revoke a single refresh token (logout).
    * @param {string} refreshToken
-   * @returns {boolean} true if revoked
+   * @returns {Promise<boolean>} true if revoked
    */
-  revokeRefreshToken(refreshToken) {
+  async revokeRefreshToken(refreshToken) {
     let payload;
     try {
       payload = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
     } catch (err) {
       return false;
     }
-    const record = RefreshToken.findByTokenId(payload.jti);
+    const record = await RefreshToken.findByTokenId(payload.jti);
     if (!record) return false;
-    RefreshToken.revoke(record.tokenId);
+    await RefreshToken.revoke(record.tokenId);
     return true;
   },
 

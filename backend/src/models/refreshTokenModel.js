@@ -11,33 +11,35 @@ const db = require('../config/db');
  *   as rotated and a new record (same family) is created.
  * - If a rotated (stale) token is used again, it signals token theft/replay,
  *   so we revoke the ENTIRE family.
+ *
+ * All methods are async to support the serverless-friendly Redis engine.
  */
 const RefreshToken = {
   /**
    * Get all refresh token records.
-   * @returns {Array}
+   * @returns {Promise<Array>}
    */
-  getAll() {
-    return db.readJSON(db.refreshTokensFile);
+  async getAll() {
+    return db.readCollection('refreshTokens');
   },
 
   /**
    * Find a record by its tokenId (jti claim in the JWT).
    * @param {string} tokenId
-   * @returns {object|null}
+   * @returns {Promise<object|null>}
    */
-  findByTokenId(tokenId) {
-    const tokens = this.getAll();
+  async findByTokenId(tokenId) {
+    const tokens = await this.getAll();
     return tokens.find((t) => t.tokenId === tokenId) || null;
   },
 
   /**
    * Create a new refresh token record.
    * @param {{ userId: string, tokenId: string, familyId: string, expiresAt: string }} data
-   * @returns {object} the created record
+   * @returns {Promise<object>} the created record
    */
-  create({ userId, tokenId, familyId, expiresAt }) {
-    const tokens = this.getAll();
+  async create({ userId, tokenId, familyId, expiresAt }) {
+    const tokens = await this.getAll();
     const record = {
       tokenId,
       userId,
@@ -49,43 +51,46 @@ const RefreshToken = {
       lastRotatedAt: null,
     };
     tokens.push(record);
-    db.writeJSON(db.refreshTokensFile, tokens);
+    await db.writeCollection('refreshTokens', tokens);
     return record;
   },
 
   /**
    * Mark a token as rotated (used to issue a new pair).
    * @param {string} tokenId
+   * @returns {Promise<void>}
    */
-  markRotated(tokenId) {
-    const tokens = this.getAll();
+  async markRotated(tokenId) {
+    const tokens = await this.getAll();
     const index = tokens.findIndex((t) => t.tokenId === tokenId);
     if (index !== -1) {
       tokens[index].rotated = true;
       tokens[index].lastRotatedAt = new Date().toISOString();
-      db.writeJSON(db.refreshTokensFile, tokens);
+      await db.writeCollection('refreshTokens', tokens);
     }
   },
 
   /**
    * Revoke a single token record.
    * @param {string} tokenId
+   * @returns {Promise<void>}
    */
-  revoke(tokenId) {
-    const tokens = this.getAll();
+  async revoke(tokenId) {
+    const tokens = await this.getAll();
     const index = tokens.findIndex((t) => t.tokenId === tokenId);
     if (index !== -1) {
       tokens[index].revoked = true;
-      db.writeJSON(db.refreshTokensFile, tokens);
+      await db.writeCollection('refreshTokens', tokens);
     }
   },
 
   /**
    * Revoke ALL tokens in a family. Used when token reuse is detected.
    * @param {string} familyId
+   * @returns {Promise<void>}
    */
-  revokeFamily(familyId) {
-    const tokens = this.getAll();
+  async revokeFamily(familyId) {
+    const tokens = await this.getAll();
     let changed = false;
     tokens.forEach((t) => {
       if (t.familyId === familyId && !t.revoked) {
@@ -94,16 +99,17 @@ const RefreshToken = {
       }
     });
     if (changed) {
-      db.writeJSON(db.refreshTokensFile, tokens);
+      await db.writeCollection('refreshTokens', tokens);
     }
   },
 
   /**
    * Revoke all tokens belonging to a user (used on logout-all / security).
    * @param {string} userId
+   * @returns {Promise<void>}
    */
-  revokeAllForUser(userId) {
-    const tokens = this.getAll();
+  async revokeAllForUser(userId) {
+    const tokens = await this.getAll();
     let changed = false;
     tokens.forEach((t) => {
       if (t.userId === userId && !t.revoked) {
@@ -112,19 +118,20 @@ const RefreshToken = {
       }
     });
     if (changed) {
-      db.writeJSON(db.refreshTokensFile, tokens);
+      await db.writeCollection('refreshTokens', tokens);
     }
   },
 
   /**
    * Delete expired records to keep the store clean.
+   * @returns {Promise<void>}
    */
-  cleanupExpired() {
-    const tokens = this.getAll();
+  async cleanupExpired() {
+    const tokens = await this.getAll();
     const now = Date.now();
     const filtered = tokens.filter((t) => Date.parse(t.expiresAt) > now);
     if (filtered.length !== tokens.length) {
-      db.writeJSON(db.refreshTokensFile, filtered);
+      await db.writeCollection('refreshTokens', filtered);
     }
   },
 };

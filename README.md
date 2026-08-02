@@ -321,6 +321,72 @@ For production, swap the model layer for a real database (MongoDB, PostgreSQL, R
 
 ---
 
+## ☁️ Deploying to Vercel
+
+This project is **Vercel-ready** — both the React frontend and the Express API run on Vercel's serverless platform. The frontend is built as static files and the backend is exposed as a single serverless function (`api/index.js`).
+
+### How it works
+
+| Concern | Local dev | Vercel (production) |
+|---------|-----------|---------------------|
+| Frontend | Vite dev server on `:5173` | Static build in `frontend/dist` |
+| Backend | Express on `:8000` | Serverless function at `/api/*` |
+| Data store | JSON files in `backend/src/data` | **Upstash Redis (Vercel KV)** |
+| API base URL | Vite proxy `/api` → `:8000` | Same-origin `/api` (relative) |
+
+### Prerequisites
+
+1. A GitHub repo with this code.
+2. A [Vercel](https://vercel.com) account.
+3. A **Vercel KV (Upstash Redis)** store — add it from the Vercel Marketplace/Integrations (or use any Upstash Redis). This is what persists users & refresh tokens on the serverless platform.
+
+### Steps
+
+1. **Import the repo** in Vercel. The `vercel.json` config sets the framework to Vite, the build command to build the frontend, and routes `/api/*` to the serverless function.
+
+2. **Add the KV store** (Vercel → Storage → Create → KV/Upstash Redis). Vercel auto-injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
+
+3. **Add environment variables** (Vercel → Project → Settings → Environment Variables):
+   - `ACCESS_TOKEN_SECRET` — strong random string for access tokens
+   - `REFRESH_TOKEN_SECRET` — strong random string for refresh tokens
+   - `KV_REST_API_URL` — auto-injected by the KV store
+   - `KV_REST_API_TOKEN` — auto-injected by the KV store
+   - `COOKIE_SECURE=true` — required on HTTPS
+   - `NODE_ENV=production`
+   - *(optional)* `CORS_ORIGINS` — if you serve the frontend from a different origin
+
+   Generate secrets with:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+   ```
+
+4. **Deploy.** Vercel builds the frontend and deploys the serverless function automatically.
+
+### Deploying with the Vercel CLI
+
+```bash
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+### Adding a Vercel KV store via CLI
+
+```bash
+vercel integrations add
+# or
+vercel kv create auth-kv
+vercel kv list
+```
+
+### Important notes for serverless
+
+- **No persistent filesystem** — the JSON file store only runs locally. On Vercel, the data layer automatically switches to Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (`backend/src/config/db.js`).
+- **Cookies on Vercel** — because frontend and API share the same domain (`*.vercel.app`), the `httpOnly` refresh cookie works transparently with `SameSite=Lax`.
+- **Cold starts** — the first request after idle may be slower (expected with serverless).
+
+---
+
 ## 📄 License
 
 ISC
