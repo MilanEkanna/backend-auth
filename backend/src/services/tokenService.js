@@ -1,7 +1,10 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const RefreshToken = require('../models/refreshTokenModel');
+
+// Use Node's built-in crypto.randomUUID() instead of the uuid package.
+// uuid v14 is ESM-only and throws ERR_REQUIRE_ESM on older Vercel Node runtimes.
+const uuidv4 = () => crypto.randomUUID();
 
 /**
  * Token service - generates, verifies and rotates JWT tokens.

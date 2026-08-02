@@ -30,7 +30,7 @@ This project is a complete, self-contained authentication API — it needs **no 
 - **bcryptjs** — password hashing
 - **cookie-parser** — refresh token cookie parsing
 - **dotenv** — environment configuration
-- **uuid** — unique token IDs (jti) & user IDs
+- **crypto** (built-in) — unique token IDs (jti) & user IDs
 
 ---
 
@@ -331,26 +331,23 @@ This project is **Vercel-ready** — both the React frontend and the Express API
 |---------|-----------|---------------------|
 | Frontend | Vite dev server on `:5173` | Static build in `frontend/dist` |
 | Backend | Express on `:8000` | Serverless function at `/api/*` |
-| Data store | JSON files in `backend/src/data` | **Upstash Redis (Vercel KV)** |
+| Data store | JSON files in `backend/src/data` | In-memory (ephemeral, resets on cold start) |
 | API base URL | Vite proxy `/api` → `:8000` | Same-origin `/api` (relative) |
 
 ### Prerequisites
 
 1. A GitHub repo with this code.
 2. A [Vercel](https://vercel.com) account.
-3. A **Vercel KV (Upstash Redis)** store — add it from the Vercel Marketplace/Integrations (or use any Upstash Redis). This is what persists users & refresh tokens on the serverless platform.
+
+No external database is required. On Vercel the data layer uses a simple in-memory store, so the app works out of the box. **Note:** data is ephemeral on serverless — users/tokens reset whenever the function cold-starts. For persistence in production, swap the model layer for a real database (Postgres, Upstash Redis/Vercel KV, MongoDB, etc.).
 
 ### Steps
 
 1. **Import the repo** in Vercel. The `vercel.json` config sets the framework to Vite, the build command to build the frontend, and routes `/api/*` to the serverless function.
 
-2. **Add the KV store** (Vercel → Storage → Create → KV/Upstash Redis). Vercel auto-injects `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
-
-3. **Add environment variables** (Vercel → Project → Settings → Environment Variables):
+2. **Add environment variables** (Vercel → Project → Settings → Environment Variables):
    - `ACCESS_TOKEN_SECRET` — strong random string for access tokens
    - `REFRESH_TOKEN_SECRET` — strong random string for refresh tokens
-   - `KV_REST_API_URL` — auto-injected by the KV store
-   - `KV_REST_API_TOKEN` — auto-injected by the KV store
    - `COOKIE_SECURE=true` — required on HTTPS
    - `NODE_ENV=production`
    - *(optional)* `CORS_ORIGINS` — if you serve the frontend from a different origin
@@ -381,7 +378,7 @@ vercel kv list
 
 ### Important notes for serverless
 
-- **No persistent filesystem** — the JSON file store only runs locally. On Vercel, the data layer automatically switches to Redis when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (`backend/src/config/db.js`).
+- **No persistent filesystem** — the JSON file store only runs locally. On Vercel, the data layer automatically uses an in-memory store (`backend/src/config/db.js`), so data is ephemeral and resets on cold starts.
 - **Cookies on Vercel** — because frontend and API share the same domain (`*.vercel.app`), the `httpOnly` refresh cookie works transparently with `SameSite=Lax`.
 - **Cold starts** — the first request after idle may be slower (expected with serverless).
 
