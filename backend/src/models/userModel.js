@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const db = require('../config/db');
 
 /**
@@ -45,7 +45,7 @@ const User = {
   async create({ name, email, passwordHash }) {
     const users = await this.getAll();
     const newUser = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       name,
       email: email.toLowerCase(),
       passwordHash,
